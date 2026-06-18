@@ -771,24 +771,46 @@ public final class EnigmaMcpTools {
 		public JsonObject execute(JsonObject arguments) {
 			int limit = limit(arguments, 25);
 			JsonArray methods = new JsonArray();
+
+			record ScoredMethod(MethodEntry entry, int score, int outgoing, int incoming) {}
+
 			project.getJarIndex().getEntryIndex().getMethods().stream()
-					.sorted(Comparator.comparingInt((MethodEntry entry) -> scoreMethod(entry)).reversed())
+					.map(entry -> {
+						int outgoing = project.getJarIndex().getReferenceIndex().getMethodsReferencedBy(entry).size();
+						int incoming = project.getJarIndex().getReferenceIndex().getReferencesToMethod(entry).size();
+						int score = outgoing + incoming;
+
+						if (entry.getName().equals("main")) {
+							score += 1000;
+						}
+
+						if (entry.isConstructor()) {
+							score += 10;
+						}
+
+						return new ScoredMethod(entry, score, outgoing, incoming);
+					})
+					.sorted(Comparator.comparingInt((ScoredMethod sm) -> sm.score()).reversed())
 					.limit(limit)
-					.forEach(entry -> {
-						JsonObject item = methodJson(project, entry);
-						item.addProperty("score", scoreMethod(entry));
-						item.addProperty("outgoingCalls", project.getJarIndex().getReferenceIndex().getMethodsReferencedBy(entry).size());
-						item.addProperty("incomingReferences", project.getJarIndex().getReferenceIndex().getReferencesToMethod(entry).size());
+					.forEach(sm -> {
+						JsonObject item = methodJson(project, sm.entry());
+						item.addProperty("score", sm.score());
+						item.addProperty("outgoingCalls", sm.outgoing());
+						item.addProperty("incomingReferences", sm.incoming());
 						methods.add(item);
 					});
 
 			JsonArray classes = new JsonArray();
+
+			record ScoredClass(ClassEntry entry, int refs) {}
+
 			project.getJarIndex().getEntryIndex().getClasses().stream()
-					.sorted(Comparator.comparingInt((ClassEntry entry) -> project.getJarIndex().getReferenceIndex().getReferencesToClass(entry).size()).reversed())
+					.map(entry -> new ScoredClass(entry, project.getJarIndex().getReferenceIndex().getReferencesToClass(entry).size()))
+					.sorted(Comparator.comparingInt((ScoredClass sc) -> sc.refs()).reversed())
 					.limit(limit)
-					.forEach(entry -> {
-						JsonObject item = classJson(project, entry);
-						item.addProperty("incomingReferences", project.getJarIndex().getReferenceIndex().getReferencesToClass(entry).size());
+					.forEach(sc -> {
+						JsonObject item = classJson(project, sc.entry());
+						item.addProperty("incomingReferences", sc.refs());
 						classes.add(item);
 					});
 

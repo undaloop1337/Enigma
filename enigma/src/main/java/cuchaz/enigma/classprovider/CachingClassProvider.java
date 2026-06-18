@@ -63,7 +63,7 @@ public class CachingClassProvider implements ClassProvider {
 	}
 
 	private static final class CacheEntry {
-		private long addTime;
+		private volatile long addTime;
 		private final @Nullable ClassNode classNode;
 
 		private CacheEntry(long addTime, @Nullable ClassNode classNode) {
@@ -78,7 +78,7 @@ public class CachingClassProvider implements ClassProvider {
 
 		@Override
 		public int hashCode() {
-			return Objects.hash(addTime, classNode);
+			return Objects.hashCode(classNode);
 		}
 	}
 }

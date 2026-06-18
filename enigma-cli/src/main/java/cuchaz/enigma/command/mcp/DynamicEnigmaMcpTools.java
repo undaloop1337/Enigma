@@ -1,7 +1,9 @@
 package cuchaz.enigma.command.mcp;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import com.google.gson.JsonObject;
@@ -14,8 +16,9 @@ public final class DynamicEnigmaMcpTools {
 
 	public static List<McpTool> create(Supplier<EnigmaProject> projectSupplier, List<McpTool> extraTools) {
 		List<McpTool> tools = new ArrayList<>(extraTools);
+		List<McpTool> templateTools = EnigmaMcpTools.create(null);
 
-		for (McpTool tool : EnigmaMcpTools.create(null)) {
+		for (McpTool tool : templateTools) {
 			tools.add(new DynamicProjectTool(projectSupplier, tool));
 		}
 
@@ -25,6 +28,8 @@ public final class DynamicEnigmaMcpTools {
 	private static class DynamicProjectTool implements McpTool {
 		private final Supplier<EnigmaProject> projectSupplier;
 		private final McpTool template;
+		private EnigmaProject cachedProject;
+		private Map<String, McpTool> cachedTools;
 
 		DynamicProjectTool(Supplier<EnigmaProject> projectSupplier, McpTool template) {
 			this.projectSupplier = projectSupplier;
@@ -54,11 +59,29 @@ public final class DynamicEnigmaMcpTools {
 				throw new McpException(-32002, "No project is open in Enigma");
 			}
 
-			McpTool tool = EnigmaMcpTools.create(project).stream()
-					.filter(candidate -> candidate.name().equals(template.name()))
-					.findFirst()
-					.orElseThrow(() -> new McpException(-32602, "Unknown tool: " + template.name()));
+			McpTool tool = getToolForProject(project);
 			return tool.execute(arguments);
+		}
+
+		private McpTool getToolForProject(EnigmaProject project) throws McpException {
+			if (cachedProject != project) {
+				Map<String, McpTool> toolMap = new HashMap<>();
+
+				for (McpTool t : EnigmaMcpTools.create(project)) {
+					toolMap.put(t.name(), t);
+				}
+
+				cachedProject = project;
+				cachedTools = toolMap;
+			}
+
+			McpTool tool = cachedTools.get(template.name());
+
+			if (tool == null) {
+				throw new McpException(-32602, "Unknown tool: " + template.name());
+			}
+
+			return tool;
 		}
 	}
 }

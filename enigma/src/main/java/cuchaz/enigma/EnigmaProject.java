@@ -55,7 +55,7 @@ import cuchaz.enigma.translation.representation.entry.LocalVariableEntry;
 import cuchaz.enigma.translation.representation.entry.MethodEntry;
 import cuchaz.enigma.utils.I18n;
 
-public class EnigmaProject implements ProjectView {
+public class EnigmaProject implements ProjectView, AutoCloseable {
 	private final Enigma enigma;
 
 	private final List<Path> jarPaths;
@@ -490,5 +490,12 @@ public class EnigmaProject implements ProjectView {
 		PROPAGATE,
 		TRACE_AS_SOURCE,
 		IGNORE
+	}
+
+	@Override
+	public void close() throws Exception {
+		if (classProvider instanceof AutoCloseable closeable) {
+			closeable.close();
+		}
 	}
 }

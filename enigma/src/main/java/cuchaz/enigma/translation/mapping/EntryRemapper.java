@@ -93,7 +93,10 @@ public class EntryRemapper {
 
 	// A little bit of a hack to also map the getter method for record fields.
 	private void mapRecordComponentGetter(ValidationContext vc, ClassEntry classEntry, FieldEntry fieldEntry, EntryMapping fieldMapping) {
-		if (!jarIndex.getEntryIndex().getDefinition(classEntry).isRecord() || jarIndex.getEntryIndex().getFieldAccess(fieldEntry).isStatic()) {
+		var classDef = jarIndex.getEntryIndex().getDefinition(classEntry);
+		var fieldAccess = jarIndex.getEntryIndex().getFieldAccess(fieldEntry);
+
+		if (classDef == null || !classDef.isRecord() || fieldAccess == null || fieldAccess.isStatic()) {
 			return;
 		}
 

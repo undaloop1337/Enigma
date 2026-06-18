@@ -79,7 +79,11 @@ public class JarIndex implements JarIndexer, JarIndexView {
 		progress.step(1, I18n.translate("progress.jar.indexing.entries"));
 
 		classNames.parallelStream().forEach(className -> {
-			classProvider.get(className).accept(new IndexClassVisitor(this, Enigma.ASM_VERSION));
+			var classNode = classProvider.get(className);
+
+			if (classNode != null) {
+				classNode.accept(new IndexClassVisitor(this, Enigma.ASM_VERSION));
+			}
 		});
 
 		ClassProvider classProviderWithFrames = new CachingClassProvider(new AddFramesIfNecessaryClassProvider(classProvider, entryIndex));
@@ -88,9 +92,13 @@ public class JarIndex implements JarIndexer, JarIndexView {
 
 		classNames.parallelStream().forEach(className -> {
 			try {
-				classProviderWithFrames.get(className).accept(new IndexReferenceVisitor(this, Enigma.ASM_VERSION));
+				var classNode = classProviderWithFrames.get(className);
+
+				if (classNode != null) {
+					classNode.accept(new IndexReferenceVisitor(this, Enigma.ASM_VERSION));
+				}
 			} catch (RuntimeException e) {
-				System.err.println("WARNING: Skipping references for class " + className + ": " + e.getMessage());
+				skipMalformedReferenceIndex(className, e);
 			}
 		});
 
@@ -101,6 +109,10 @@ public class JarIndex implements JarIndexer, JarIndexView {
 		processIndex(this);
 
 		return classProviderWithFrames;
+	}
+
+	private static void skipMalformedReferenceIndex(String className, RuntimeException e) {
+		System.err.println("Warning: skipping malformed class during reference indexing: " + className + " (" + e.getClass().getSimpleName() + ": " + e.getMessage() + ")");
 	}
 
 	@Override

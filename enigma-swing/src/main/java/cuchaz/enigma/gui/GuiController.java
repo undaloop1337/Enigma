@@ -181,13 +181,24 @@ public class GuiController implements ClientPacketHandler, GuiView, DataInvalida
 				new ExportJarTool(),
 				new ExportSourceTool()
 		));
-		mcpServer = new McpHttpServer("127.0.0.1", 37627, tools);
 
-		try {
-			mcpServer.start();
-		} catch (IOException e) {
-			mcpServer = null;
-			System.err.println("Failed to start MCP server: " + e.getMessage());
+		int port = 37627;
+		int maxAttempts = 10;
+
+		for (int attempt = 0; attempt < maxAttempts; attempt++) {
+			mcpServer = new McpHttpServer("127.0.0.1", port + attempt, tools);
+
+			try {
+				mcpServer.start();
+				System.out.println("MCP server started on port " + (port + attempt));
+				return;
+			} catch (IOException e) {
+				mcpServer = null;
+
+				if (attempt == maxAttempts - 1) {
+					System.err.println("Failed to start MCP server after " + maxAttempts + " attempts: " + e.getMessage());
+				}
+			}
 		}
 	}
 

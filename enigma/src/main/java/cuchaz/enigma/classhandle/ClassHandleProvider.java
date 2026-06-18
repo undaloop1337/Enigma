@@ -413,22 +413,26 @@ public final class ClassHandleProvider {
 		}
 
 		public CompletableFuture<Result<Source, ClassHandleError>> getUncommentedSourceAsync() {
-			if (uncommentedSource != null) {
-				return CompletableFuture.completedFuture(uncommentedSource);
-			} else {
-				CompletableFuture<Result<Source, ClassHandleError>> f = new CompletableFuture<>();
-				waitingUncommentedSources.add(f);
-				return f;
+			synchronized (waitingUncommentedSources) {
+				if (uncommentedSource != null) {
+					return CompletableFuture.completedFuture(uncommentedSource);
+				} else {
+					CompletableFuture<Result<Source, ClassHandleError>> f = new CompletableFuture<>();
+					waitingUncommentedSources.add(f);
+					return f;
+				}
 			}
 		}
 
 		public CompletableFuture<Result<DecompiledClassSource, ClassHandleError>> getSourceAsync() {
-			if (source != null) {
-				return CompletableFuture.completedFuture(source);
-			} else {
-				CompletableFuture<Result<DecompiledClassSource, ClassHandleError>> f = new CompletableFuture<>();
-				waitingSources.add(f);
-				return f;
+			synchronized (waitingSources) {
+				if (source != null) {
+					return CompletableFuture.completedFuture(source);
+				} else {
+					CompletableFuture<Result<DecompiledClassSource, ClassHandleError>> f = new CompletableFuture<>();
+					waitingSources.add(f);
+					return f;
+				}
 			}
 		}
 	}

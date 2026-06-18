@@ -76,7 +76,7 @@ public class EnigmaClient {
 		}
 	}
 
-	public void sendPacket(Packet<ServerPacketHandler> packet) {
+	public synchronized void sendPacket(Packet<ServerPacketHandler> packet) {
 		try {
 			output.writeByte(PacketRegistry.getC2SId(packet));
 			packet.write(output);

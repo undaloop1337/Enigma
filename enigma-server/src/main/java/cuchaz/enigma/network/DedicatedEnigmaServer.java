@@ -125,7 +125,7 @@ public class DedicatedEnigmaServer extends EnigmaServer {
 		// noinspection RedundantSuppression
 		// noinspection Convert2MethodRef - javac 8 bug
 		Executors.newScheduledThreadPool(1).scheduleAtFixedRate(() -> server.runOnThread(() -> server.saveMappings()), 0, 1, TimeUnit.MINUTES);
-		Runtime.getRuntime().addShutdownHook(new Thread(server::saveMappings));
+		Runtime.getRuntime().addShutdownHook(new Thread(() -> server.runOnThread(() -> server.saveMappings())));
 
 		while (true) {
 			try {
@@ -139,6 +139,7 @@ public class DedicatedEnigmaServer extends EnigmaServer {
 	@Override
 	public synchronized void stop() {
 		super.stop();
+		log.close();
 		System.exit(0);
 	}
 

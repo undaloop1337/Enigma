@@ -11,7 +11,7 @@ import org.objectweb.asm.tree.ClassNode;
  * Combines a list of {@link ClassProvider}s into one, calling each one in a row
  * until one can provide the class.
  */
-public class CombiningClassProvider implements ClassProvider {
+public class CombiningClassProvider implements AutoCloseable, ClassProvider {
 	private final ClassProvider[] classProviders;
 
 	public CombiningClassProvider(ClassProvider... classProviders) {
@@ -38,5 +38,14 @@ public class CombiningClassProvider implements ClassProvider {
 		}
 
 		return null;
+	}
+
+	@Override
+	public void close() throws Exception {
+		for (ClassProvider cp : classProviders) {
+			if (cp instanceof AutoCloseable closeable) {
+				closeable.close();
+			}
+		}
 	}
 }

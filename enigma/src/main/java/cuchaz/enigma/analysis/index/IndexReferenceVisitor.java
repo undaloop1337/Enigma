@@ -1,15 +1,11 @@
 package cuchaz.enigma.analysis.index;
 
-import java.util.List;
-
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Handle;
-import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
-import cuchaz.enigma.analysis.BetterAnalyzerAdapter;
 import cuchaz.enigma.analysis.ReferenceTargetType;
 import cuchaz.enigma.translation.representation.AccessFlags;
 import cuchaz.enigma.translation.representation.Lambda;
@@ -40,154 +36,77 @@ public class IndexReferenceVisitor extends ClassVisitor {
 	@Override
 	public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
 		MethodDefEntry entry = new MethodDefEntry(classEntry, name, new MethodDescriptor(desc), Signature.createSignature(signature), new AccessFlags(access));
-		return new IndexReferenceMethodVisitor(api, className, access, name, desc, entry, indexer);
+		return new IndexReferenceMethodVisitor(api, entry, indexer);
 	}
 
-	private static class IndexReferenceMethodVisitor extends BetterAnalyzerAdapter {
+	private static class IndexReferenceMethodVisitor extends MethodVisitor {
 		private final MethodDefEntry callerEntry;
 		private final JarIndexer indexer;
 
-		IndexReferenceMethodVisitor(int api, String owner, int access, String name, String descriptor, MethodDefEntry callerEntry, JarIndexer indexer) {
-			super(api, owner, access, name, descriptor, null);
+		IndexReferenceMethodVisitor(int api, MethodDefEntry callerEntry, JarIndexer indexer) {
+			super(api);
 			this.callerEntry = callerEntry;
 			this.indexer = indexer;
 		}
 
 		@Override
 		public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
-			switch (opcode) {
-			case Opcodes.GETSTATIC, Opcodes.PUTSTATIC -> indexer.indexFieldReference(callerEntry, FieldEntry.parse(owner, name, descriptor), ReferenceTargetType.none());
-			case Opcodes.GETFIELD -> indexer.indexFieldReference(callerEntry, FieldEntry.parse(owner, name, descriptor), getReferenceTargetType(0));
-			case Opcodes.PUTFIELD -> indexer.indexFieldReference(callerEntry, FieldEntry.parse(owner, name, descriptor), getReferenceTargetType(Type.getType(descriptor).getSize()));
-			}
-
-			super.visitFieldInsn(opcode, owner, name, descriptor);
+			indexer.indexFieldReference(callerEntry, FieldEntry.parse(owner, name, descriptor), ReferenceTargetType.none());
 		}
 
 		@Override
 		public void visitLdcInsn(Object value) {
-			if (value instanceof Type type && (type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY)) {
-				if (type.getSort() == Type.ARRAY) {
-					type = type.getElementType();
-				}
-
-				indexer.indexClassReference(callerEntry, ClassEntry.parse(type.getInternalName()), ReferenceTargetType.none());
+			if (value instanceof Type type) {
+				indexType(type);
 			}
-
-			super.visitLdcInsn(value);
 		}
 
 		@Override
 		public void visitTypeInsn(int opcode, String type) {
-			if (opcode == Opcodes.INSTANCEOF || opcode == Opcodes.CHECKCAST) {
-				Type classType = Type.getObjectType(type);
-
-				if (classType.getSort() == Type.ARRAY) {
-					classType = classType.getElementType();
-				}
-
-				indexer.indexClassReference(callerEntry, ClassEntry.parse(classType.getInternalName()), ReferenceTargetType.none());
+			if (opcode == Opcodes.NEW || opcode == Opcodes.ANEWARRAY || opcode == Opcodes.INSTANCEOF || opcode == Opcodes.CHECKCAST) {
+				indexType(Type.getObjectType(type));
 			}
-
-			super.visitTypeInsn(opcode, type);
 		}
 
 		@Override
 		public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
-			ReferenceTargetType targetType;
-
-			if (opcode == Opcodes.INVOKESTATIC) {
-				targetType = ReferenceTargetType.none();
-			} else {
-				int argSize = (Type.getArgumentsAndReturnSizes(descriptor) >> 2) - 1;
-				targetType = getReferenceTargetType(argSize);
-			}
-
-			indexer.indexMethodReference(callerEntry, MethodEntry.parse(owner, name, descriptor), targetType);
-
-			super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+			indexer.indexMethodReference(callerEntry, MethodEntry.parse(owner, name, descriptor), ReferenceTargetType.none());
+			indexMethodDescriptor(descriptor);
 		}
 
 		@Override
 		public void visitInvokeDynamicInsn(String name, String descriptor, Handle bootstrapMethodHandle, Object... bootstrapMethodArguments) {
+			indexMethodDescriptor(descriptor);
+
 			if ("java/lang/invoke/LambdaMetafactory".equals(bootstrapMethodHandle.getOwner()) && ("metafactory".equals(bootstrapMethodHandle.getName()) || "altMetafactory".equals(bootstrapMethodHandle.getName()))) {
 				Type samMethodType = (Type) bootstrapMethodArguments[0];
 				Handle implMethod = (Handle) bootstrapMethodArguments[1];
 				Type instantiatedMethodType = (Type) bootstrapMethodArguments[2];
-
-				ReferenceTargetType targetType;
-
-				if (implMethod.getTag() != Opcodes.H_GETSTATIC && implMethod.getTag() != Opcodes.H_PUTFIELD && implMethod.getTag() != Opcodes.H_INVOKESTATIC) {
-					if (instantiatedMethodType.getArgumentCount() < Type.getArgumentCount(implMethod.getDesc())) {
-						if (descriptor.startsWith("(L")) { // is the first parameter of the indy an object type?
-							int argSize = (Type.getArgumentsAndReturnSizes(descriptor) >> 2) - 1;
-							targetType = getReferenceTargetType(argSize - 1);
-						} else {
-							targetType = ReferenceTargetType.none();
-						}
-					} else {
-						targetType = ReferenceTargetType.none(); // no "this" argument
-					}
-				} else {
-					targetType = ReferenceTargetType.none();
-				}
-
-				indexer.indexLambda(callerEntry, new Lambda(name, new MethodDescriptor(descriptor), new MethodDescriptor(samMethodType.getDescriptor()), getHandleEntry(implMethod), new MethodDescriptor(instantiatedMethodType.getDescriptor())), targetType);
-			}
-
-			super.visitInvokeDynamicInsn(name, descriptor, bootstrapMethodHandle, bootstrapMethodArguments);
-		}
-
-		private ReferenceTargetType getReferenceTargetType(int stackDepth) {
-			if (stack == null) { // Unreachable instruction
-				return ReferenceTargetType.uninitialized();
-			}
-
-			if (stackDepth >= stack.size()) {
-				return ReferenceTargetType.uninitialized();
-			}
-
-			Object stackValue = stack.get(stack.size() - 1 - stackDepth);
-
-			if (stackValue.equals(Opcodes.UNINITIALIZED_THIS) || stackValue.equals(Opcodes.NULL) || stackValue instanceof Label) {
-				return ReferenceTargetType.uninitialized();
-			}
-
-			if (!(stackValue instanceof String type)) {
-				return ReferenceTargetType.uninitialized();
-			}
-
-			if (type.startsWith("[")) {
-				// array type
-				return ReferenceTargetType.classType(new ClassEntry("java/lang/Object"));
-			} else {
-				return ReferenceTargetType.classType(new ClassEntry(type));
+				indexer.indexLambda(callerEntry, new Lambda(name, new MethodDescriptor(descriptor), new MethodDescriptor(samMethodType.getDescriptor()), getHandleEntry(implMethod), new MethodDescriptor(instantiatedMethodType.getDescriptor())), ReferenceTargetType.none());
 			}
 		}
 
-		private static String stackValuesToString(List<Object> stack) {
-			StringBuilder result = new StringBuilder("[");
-			boolean first = true;
+		@Override
+		public void visitMultiANewArrayInsn(String descriptor, int numDimensions) {
+			indexType(Type.getType(descriptor));
+		}
 
-			for (Object stackValue : stack) {
-				if (first) {
-					first = false;
-				} else {
-					result.append(", ");
-				}
+		private void indexMethodDescriptor(String descriptor) {
+			Type methodType = Type.getMethodType(descriptor);
 
-				if (stackValue instanceof String str) {
-					result.append(str);
-				} else if (stackValue instanceof Integer i) {
-					result.append("TIFDJNU".charAt(i));
-				} else if (stackValue instanceof Label) {
-					result.append('U');
-				} else {
-					throw new AssertionError("Illegal stack value type: " + stackValue.getClass().getName());
-				}
+			for (Type argumentType : methodType.getArgumentTypes()) {
+				indexType(argumentType);
 			}
 
-			return result.append(']').toString();
+			indexType(methodType.getReturnType());
+		}
+
+		private void indexType(Type type) {
+			if (type.getSort() == Type.ARRAY) {
+				indexType(type.getElementType());
+			} else if (type.getSort() == Type.OBJECT) {
+				indexer.indexClassReference(callerEntry, ClassEntry.parse(type.getInternalName()), ReferenceTargetType.none());
+			}
 		}
 
 		private static ParentedEntry<?> getHandleEntry(Handle handle) {

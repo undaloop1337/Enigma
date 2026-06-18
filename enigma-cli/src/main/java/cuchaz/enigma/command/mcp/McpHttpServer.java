@@ -4,21 +4,27 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 public class McpHttpServer {
+	private static final long SESSION_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(30);
+
 	private final InetSocketAddress address;
 	private final McpJsonRpcHandler handler;
 	private final Map<String, SseSession> sessions = new ConcurrentHashMap<>();
 	private HttpServer server;
+	private ScheduledExecutorService sessionCleaner;
 
 	public McpHttpServer(String host, int port, List<McpTool> tools) {
 		this.address = new InetSocketAddress(host, port);
@@ -37,6 +43,13 @@ public class McpHttpServer {
 		server.createContext("/message", this::handleMessage);
 		server.setExecutor(Executors.newCachedThreadPool());
 		server.start();
+
+		sessionCleaner = Executors.newSingleThreadScheduledExecutor(r -> {
+			Thread t = new Thread(r, "MCP-SSE-Cleaner");
+			t.setDaemon(true);
+			return t;
+		});
+		sessionCleaner.scheduleAtFixedRate(this::cleanStaleSessions, 5, 5, TimeUnit.MINUTES);
 	}
 
 	public synchronized void stop() {
@@ -44,9 +57,32 @@ public class McpHttpServer {
 			return;
 		}
 
+		if (sessionCleaner != null) {
+			sessionCleaner.shutdownNow();
+			sessionCleaner = null;
+		}
+
+		for (SseSession session : sessions.values()) {
+			session.close();
+		}
+
 		server.stop(0);
 		server = null;
 		sessions.clear();
+	}
+
+	private void cleanStaleSessions() {
+		long now = System.currentTimeMillis();
+		Iterator<Map.Entry<String, SseSession>> it = sessions.entrySet().iterator();
+
+		while (it.hasNext()) {
+			SseSession session = it.next().getValue();
+
+			if (session.isClosed() || now - session.getLastActivityTime() > SESSION_TIMEOUT_MS) {
+				session.close();
+				it.remove();
+			}
+		}
 	}
 
 	public int getPort() {
@@ -117,7 +153,12 @@ public class McpHttpServer {
 		JsonObject response = handler.handle(request);
 
 		if (response != null) {
-			sse.write("message", handler.toJson(response));
+			try {
+				sse.write("message", handler.toJson(response));
+			} catch (IOException e) {
+				sessions.remove(session);
+				sse.close();
+			}
 		}
 
 		writeText(exchange, 202, "Accepted");
@@ -162,15 +203,44 @@ public class McpHttpServer {
 
 	private static class SseSession {
 		private final OutputStream stream;
+		private volatile long lastActivityTime;
+		private volatile boolean closed;
 
 		SseSession(OutputStream stream) {
 			this.stream = stream;
+			this.lastActivityTime = System.currentTimeMillis();
 		}
 
 		synchronized void write(String event, String data) throws IOException {
+			if (closed) {
+				throw new IOException("Session is closed");
+			}
+
 			stream.write(("event: " + event + "\n").getBytes(StandardCharsets.UTF_8));
 			stream.write(("data: " + data + "\n\n").getBytes(StandardCharsets.UTF_8));
 			stream.flush();
+			lastActivityTime = System.currentTimeMillis();
+		}
+
+		long getLastActivityTime() {
+			return lastActivityTime;
+		}
+
+		boolean isClosed() {
+			return closed;
+		}
+
+		synchronized void close() {
+			if (closed) {
+				return;
+			}
+
+			closed = true;
+
+			try {
+				stream.close();
+			} catch (IOException ignored) {
+			}
 		}
 	}
 }

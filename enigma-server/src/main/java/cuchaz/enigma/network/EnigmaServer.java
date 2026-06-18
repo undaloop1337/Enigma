@@ -16,7 +16,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import cuchaz.enigma.network.packet.EntryChangeS2CPacket;
 import cuchaz.enigma.network.packet.KickS2CPacket;
@@ -39,20 +41,20 @@ public abstract class EnigmaServer {
 	private final int port;
 	private ServerSocket socket;
 	private List<Socket> clients = new CopyOnWriteArrayList<>();
-	private Map<Socket, String> usernames = new HashMap<>();
-	private Set<Socket> unapprovedClients = new HashSet<>();
+	private Map<Socket, String> usernames = new ConcurrentHashMap<>();
+	private Set<Socket> unapprovedClients = ConcurrentHashMap.newKeySet();
 
 	private final byte[] jarChecksum;
 	private final char[] password;
 
 	public static final int DUMMY_SYNC_ID = 0;
 	private final EntryRemapper mappings;
-	private Map<Entry<?>, Integer> syncIds = new HashMap<>();
-	private Map<Integer, Entry<?>> inverseSyncIds = new HashMap<>();
-	private Map<Integer, Set<Socket>> clientsNeedingConfirmation = new HashMap<>();
+	private Map<Entry<?>, Integer> syncIds = new ConcurrentHashMap<>();
+	private Map<Integer, Entry<?>> inverseSyncIds = new ConcurrentHashMap<>();
+	private Map<Integer, Set<Socket>> clientsNeedingConfirmation = new ConcurrentHashMap<>();
 	private int nextSyncId = DUMMY_SYNC_ID + 1;
 
-	private static int nextIoId = 0;
+	private static final AtomicInteger nextIoId = new AtomicInteger(0);
 
 	public EnigmaServer(byte[] jarChecksum, char[] password, EntryRemapper mappings, int port) {
 		this.jarChecksum = jarChecksum;
@@ -113,7 +115,7 @@ public abstract class EnigmaServer {
 
 			kick(client, "disconnect.disconnected");
 		});
-		thread.setName("Server I/O thread #" + (nextIoId++));
+		thread.setName("Server I/O thread #" + nextIoId.getAndIncrement());
 		thread.setDaemon(true);
 		thread.start();
 	}
