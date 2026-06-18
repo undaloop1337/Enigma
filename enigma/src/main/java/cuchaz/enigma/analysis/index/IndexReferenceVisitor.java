@@ -144,7 +144,7 @@ public class IndexReferenceVisitor extends ClassVisitor {
 			}
 
 			if (stackDepth >= stack.size()) {
-				throw new IllegalStateException("Stack depth " + stackDepth + " is higher than the stack: " + stackValuesToString(stack) + " in method " + callerEntry);
+				return ReferenceTargetType.uninitialized();
 			}
 
 			Object stackValue = stack.get(stack.size() - 1 - stackDepth);
@@ -154,7 +154,7 @@ public class IndexReferenceVisitor extends ClassVisitor {
 			}
 
 			if (!(stackValue instanceof String type)) {
-				throw new IllegalStateException("Illegal stack value in method " + callerEntry + ": " + stackValuesToString(List.of(stackValue)));
+				return ReferenceTargetType.uninitialized();
 			}
 
 			if (type.startsWith("[")) {

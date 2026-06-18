@@ -5,6 +5,7 @@ plugins {
 
 dependencies {
 	implementation project(':enigma')
+	implementation 'org.ow2.asm:asm-tree:9.9.1'
 }
 
 application {

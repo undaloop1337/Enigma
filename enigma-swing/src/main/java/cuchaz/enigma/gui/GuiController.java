@@ -32,6 +32,7 @@ import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 
+import com.google.gson.JsonObject;
 import org.jetbrains.annotations.Nullable;
 
 import cuchaz.enigma.Enigma;
@@ -56,6 +57,9 @@ import cuchaz.enigma.api.view.entry.EntryReferenceView;
 import cuchaz.enigma.api.view.entry.EntryView;
 import cuchaz.enigma.classhandle.ClassHandle;
 import cuchaz.enigma.classhandle.ClassHandleProvider;
+import cuchaz.enigma.command.mcp.DynamicEnigmaMcpTools;
+import cuchaz.enigma.command.mcp.McpHttpServer;
+import cuchaz.enigma.command.mcp.McpTool;
 import cuchaz.enigma.gui.config.LookAndFeel;
 import cuchaz.enigma.gui.config.NetConfig;
 import cuchaz.enigma.gui.config.UiConfig;
@@ -116,12 +120,14 @@ public class GuiController implements ClientPacketHandler, GuiView, DataInvalida
 
 	private EnigmaClient client;
 	private EnigmaServer server;
+	private McpHttpServer mcpServer;
 
 	private History<EntryReference<Entry<?>, Entry<?>>> referenceHistory;
 
 	public GuiController(Gui gui, Enigma enigma) {
 		this.gui = gui;
 		this.enigma = enigma;
+		startMcpServer();
 	}
 
 	@Override
@@ -149,6 +155,275 @@ public class GuiController implements ClientPacketHandler, GuiView, DataInvalida
 		JEditorPane editor = new JEditorPane();
 		EditorPanel.customizeEditor(editor);
 		return editor;
+	}
+
+	public String getMcpHttpUrl() {
+		return mcpServer == null ? null : mcpServer.getStreamableHttpUrl();
+	}
+
+	public String getMcpSseUrl() {
+		return mcpServer == null ? null : mcpServer.getSseUrl();
+	}
+
+	public void startMcpServer() {
+		if (mcpServer != null) {
+			return;
+		}
+
+		List<McpTool> tools = DynamicEnigmaMcpTools.create(() -> project, List.of(
+				new ProjectStatusTool(),
+				new CloseJarTool(),
+				new CloseMappingsTool(),
+				new ReloadMappingsTool(),
+				new ReloadAllTool(),
+				new DropMappingsTool(),
+				new SaveMappingsTool(),
+				new ExportJarTool(),
+				new ExportSourceTool()
+		));
+		mcpServer = new McpHttpServer("127.0.0.1", 37627, tools);
+
+		try {
+			mcpServer.start();
+		} catch (IOException e) {
+			mcpServer = null;
+			System.err.println("Failed to start MCP server: " + e.getMessage());
+		}
+	}
+
+	public void stopMcpServer() {
+		if (mcpServer != null) {
+			mcpServer.stop();
+			mcpServer = null;
+		}
+	}
+
+	private abstract class GuiActionTool implements McpTool {
+		@Override
+		public JsonObject inputSchema() {
+			JsonObject schema = new JsonObject();
+			schema.addProperty("type", "object");
+			schema.add("properties", new JsonObject());
+			return schema;
+		}
+
+		JsonObject success() {
+			JsonObject result = new JsonObject();
+			result.addProperty("success", true);
+			return result;
+		}
+
+		Path getPath(JsonObject arguments) {
+			return Path.of(arguments.get("path").getAsString());
+		}
+
+		void requireProject() {
+			if (project == null) {
+				throw new IllegalStateException("No project is open in Enigma");
+			}
+		}
+	}
+
+	private class CloseJarTool extends GuiActionTool {
+		@Override
+		public String name() {
+			return "close_jar";
+		}
+
+		@Override
+		public String description() {
+			return "Close the current GUI project jar.";
+		}
+
+		@Override
+		public JsonObject execute(JsonObject arguments) {
+			requireProject();
+			SwingUtilities.invokeLater(GuiController.this::closeJar);
+			return success();
+		}
+	}
+
+	private class CloseMappingsTool extends GuiActionTool {
+		@Override
+		public String name() {
+			return "close_mappings";
+		}
+
+		@Override
+		public String description() {
+			return "Close mappings in the current GUI project.";
+		}
+
+		@Override
+		public JsonObject execute(JsonObject arguments) {
+			requireProject();
+			SwingUtilities.invokeLater(GuiController.this::closeMappings);
+			return success();
+		}
+	}
+
+	private class ReloadMappingsTool extends GuiActionTool {
+		@Override
+		public String name() {
+			return "reload_mappings";
+		}
+
+		@Override
+		public String description() {
+			return "Reload mappings from the currently loaded mapping path.";
+		}
+
+		@Override
+		public JsonObject execute(JsonObject arguments) {
+			requireProject();
+			reloadMappings();
+			return success();
+		}
+	}
+
+	private class ReloadAllTool extends GuiActionTool {
+		@Override
+		public String name() {
+			return "reload_all";
+		}
+
+		@Override
+		public String description() {
+			return "Reload the current jar and mappings.";
+		}
+
+		@Override
+		public JsonObject execute(JsonObject arguments) {
+			requireProject();
+			reloadAll();
+			return success();
+		}
+	}
+
+	private class DropMappingsTool extends GuiActionTool {
+		@Override
+		public String name() {
+			return "drop_invalid_mappings";
+		}
+
+		@Override
+		public String description() {
+			return "Drop mappings that do not match the currently open jar.";
+		}
+
+		@Override
+		public JsonObject execute(JsonObject arguments) {
+			requireProject();
+			dropMappings();
+			return success();
+		}
+	}
+
+	private abstract class PathTool extends GuiActionTool {
+		@Override
+		public JsonObject inputSchema() {
+			JsonObject schema = super.inputSchema();
+			JsonObject path = new JsonObject();
+			path.addProperty("type", "string");
+			path.addProperty("description", "Output file or directory path.");
+			schema.getAsJsonObject("properties").add("path", path);
+			return schema;
+		}
+	}
+
+	private class SaveMappingsTool extends PathTool {
+		@Override
+		public String name() {
+			return "save_mappings_as";
+		}
+
+		@Override
+		public String description() {
+			return "Save mappings to a path using the currently selected mapping format.";
+		}
+
+		@Override
+		public JsonObject execute(JsonObject arguments) {
+			requireProject();
+			saveMappings(getPath(arguments));
+			return success();
+		}
+	}
+
+	private class ExportJarTool extends PathTool {
+		@Override
+		public String name() {
+			return "export_remapped_jar";
+		}
+
+		@Override
+		public String description() {
+			return "Export the current project as a remapped jar.";
+		}
+
+		@Override
+		public JsonObject execute(JsonObject arguments) {
+			requireProject();
+			exportJar(getPath(arguments));
+			return success();
+		}
+	}
+
+	private class ExportSourceTool extends PathTool {
+		@Override
+		public String name() {
+			return "export_source";
+		}
+
+		@Override
+		public String description() {
+			return "Export decompiled source for the current project to a directory.";
+		}
+
+		@Override
+		public JsonObject execute(JsonObject arguments) {
+			requireProject();
+			exportSource(getPath(arguments));
+			return success();
+		}
+	}
+
+	private class ProjectStatusTool implements McpTool {
+		@Override
+		public String name() {
+			return "project_status";
+		}
+
+		@Override
+		public String description() {
+			return "Return Enigma GUI and MCP server project status.";
+		}
+
+		@Override
+		public JsonObject inputSchema() {
+			JsonObject schema = new JsonObject();
+			schema.addProperty("type", "object");
+			schema.add("properties", new JsonObject());
+			return schema;
+		}
+
+		@Override
+		public JsonObject execute(JsonObject arguments) {
+			JsonObject result = new JsonObject();
+			result.addProperty("projectOpen", project != null);
+			result.addProperty("dirty", isDirty());
+			result.addProperty("mappingsPath", loadedMappingPath == null ? null : loadedMappingPath.toString());
+			result.addProperty("httpUrl", getMcpHttpUrl());
+			result.addProperty("sseUrl", getMcpSseUrl());
+
+			if (project != null) {
+				result.addProperty("classes", project.getJarIndex().getEntryIndex().getClasses().size());
+				result.addProperty("methods", project.getJarIndex().getEntryIndex().getMethods().size());
+				result.addProperty("fields", project.getJarIndex().getEntryIndex().getFields().size());
+			}
+
+			return result;
+		}
 	}
 
 	public boolean isDirty() {

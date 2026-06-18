@@ -91,6 +91,7 @@ public class Main {
 		register(new InvertMappingsCommand());
 		register(new CheckMappingsCommand());
 		register(new MapSpecializedMethodsCommand());
+		register(new McpCommand());
 	}
 
 	private static final class CommandHelpException extends IllegalArgumentException {

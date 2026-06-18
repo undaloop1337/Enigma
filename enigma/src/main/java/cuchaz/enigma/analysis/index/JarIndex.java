@@ -89,8 +89,8 @@ public class JarIndex implements JarIndexer, JarIndexView {
 		classNames.parallelStream().forEach(className -> {
 			try {
 				classProviderWithFrames.get(className).accept(new IndexReferenceVisitor(this, Enigma.ASM_VERSION));
-			} catch (Exception e) {
-				throw new RuntimeException("Exception while indexing class: " + className, e);
+			} catch (RuntimeException e) {
+				System.err.println("WARNING: Skipping references for class " + className + ": " + e.getMessage());
 			}
 		});
 
