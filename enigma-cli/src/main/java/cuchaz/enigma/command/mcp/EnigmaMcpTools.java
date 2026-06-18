@@ -3,48 +3,7 @@ package cuchaz.enigma.command.mcp;
 import java.util.List;
 
 import cuchaz.enigma.EnigmaProject;
-import cuchaz.enigma.command.mcp.tools.BatchSetMappingsTool;
-import cuchaz.enigma.command.mcp.tools.CallGraphTool;
-import cuchaz.enigma.command.mcp.tools.ClassBytecodeSummaryTool;
-import cuchaz.enigma.command.mcp.tools.ClassConstantsTool;
-import cuchaz.enigma.command.mcp.tools.ClassDependenciesTool;
-import cuchaz.enigma.command.mcp.tools.ClassStructureTool;
-import cuchaz.enigma.command.mcp.tools.ControlFlowGraphTool;
-import cuchaz.enigma.command.mcp.tools.DeadCodeTool;
-import cuchaz.enigma.command.mcp.tools.DecompileClassTool;
-import cuchaz.enigma.command.mcp.tools.DecompileMethodTool;
-import cuchaz.enigma.command.mcp.tools.EnumAnalysisTool;
-import cuchaz.enigma.command.mcp.tools.EntryPointsTool;
-import cuchaz.enigma.command.mcp.tools.ExportMappingsTool;
-import cuchaz.enigma.command.mcp.tools.ExportMarkdownTool;
-import cuchaz.enigma.command.mcp.tools.FieldAccessTool;
-import cuchaz.enigma.command.mcp.tools.FindOverridesTool;
-import cuchaz.enigma.command.mcp.tools.GetMappingTool;
-import cuchaz.enigma.command.mcp.tools.ImplementorsTool;
-import cuchaz.enigma.command.mcp.tools.InheritanceTool;
-import cuchaz.enigma.command.mcp.tools.InnerClassesTool;
-import cuchaz.enigma.command.mcp.tools.LambdaAnalysisTool;
-import cuchaz.enigma.command.mcp.tools.ListClassesTool;
-import cuchaz.enigma.command.mcp.tools.MappingStatsTool;
-import cuchaz.enigma.command.mcp.tools.MethodBodyTool;
-import cuchaz.enigma.command.mcp.tools.MethodCallsTool;
-import cuchaz.enigma.command.mcp.tools.MethodSimilarityTool;
-import cuchaz.enigma.command.mcp.tools.PackageDependenciesTool;
-import cuchaz.enigma.command.mcp.tools.PackageStatsTool;
-import cuchaz.enigma.command.mcp.tools.PatternMatchTool;
-import cuchaz.enigma.command.mcp.tools.ProjectInfoTool;
-import cuchaz.enigma.command.mcp.tools.ReferencesTool;
-import cuchaz.enigma.command.mcp.tools.SearchAnnotationsTool;
-import cuchaz.enigma.command.mcp.tools.SearchClassesTool;
-import cuchaz.enigma.command.mcp.tools.SearchMembersTool;
-import cuchaz.enigma.command.mcp.tools.SearchStringConstantsTool;
-import cuchaz.enigma.command.mcp.tools.SetClassMappingTool;
-import cuchaz.enigma.command.mcp.tools.SetFieldMappingTool;
-import cuchaz.enigma.command.mcp.tools.SetMethodMappingTool;
-import cuchaz.enigma.command.mcp.tools.SuggestAnalysisTargetsTool;
-import cuchaz.enigma.command.mcp.tools.TypeUsageTool;
-import cuchaz.enigma.command.mcp.tools.UnmappedEntriesTool;
-import cuchaz.enigma.command.mcp.tools.ValidateMappingsTool;
+import cuchaz.enigma.command.mcp.tools.*;
 
 public final class EnigmaMcpTools {
 	private EnigmaMcpTools() {
@@ -70,6 +29,8 @@ public final class EnigmaMcpTools {
 				new InnerClassesTool(project),
 				new EnumAnalysisTool(project),
 				new LambdaAnalysisTool(project),
+				new DiffClassesTool(project),
+				new SignatureMatchingTool(project),
 				// Method analysis
 				new EntryPointsTool(project),
 				new DecompileClassTool(project),
@@ -77,7 +38,9 @@ public final class EnigmaMcpTools {
 				new MethodBodyTool(project),
 				new ControlFlowGraphTool(project),
 				new MethodSimilarityTool(project),
-				// Reference analysis
+				new ControlFlowDeobfuscationTool(project),
+				// Data flow & references
+				new DataFlowTraceTool(project),
 				new ReferencesTool(project),
 				new MethodCallsTool(project),
 				new CallGraphTool(project),
@@ -89,10 +52,38 @@ public final class EnigmaMcpTools {
 				new ImplementorsTool(project),
 				new FindOverridesTool(project),
 				new PackageDependenciesTool(project),
+				// Security analysis
+				new FindSinksTool(project),
+				new SerializationAnalysisTool(project),
+				new ReflectionUsageTool(project),
+				new CryptoAnalysisTool(project),
+				new StringDecryptionCandidatesTool(project),
+				// Structural detection
+				new DesignPatternDetectionTool(project),
+				new NetworkProtocolAnalysisTool(project),
+				new EventSystemAnalysisTool(project),
+				new NativeMethodsTool(project),
+				new ResourceReferencesTool(project),
+				new KnownLibraryDetectionTool(project),
+				new PluginSystemDetectionTool(project),
+				new GuiAnalysisTool(project),
+				new ThreadAnalysisTool(project),
+				// Metrics & intelligence
+				new ComplexityMetricsTool(project),
+				new NamingSuggestionsTool(project),
+				new NamingConventionAnalysisTool(project),
+				new AnalysisContextTool(project),
+				new ConstantAnalysisTool(project),
+				new ExceptionFlowTool(project),
+				new FieldValueInferenceTool(project),
+				new ClassTimelineTool(project),
+				new ApiSurfaceTool(project),
 				// Discovery
 				new SuggestAnalysisTargetsTool(project),
 				new UnmappedEntriesTool(project),
+				new UnmappedDependenciesTool(project),
 				new DeadCodeTool(project),
+				new ClassClusteringTool(project),
 				// Mapping operations
 				new GetMappingTool(project),
 				new SetClassMappingTool(project),
@@ -100,9 +91,15 @@ public final class EnigmaMcpTools {
 				new SetFieldMappingTool(project),
 				new BatchSetMappingsTool(project),
 				new ValidateMappingsTool(project),
-				// Export
+				new MappingConflictsTool(project),
+				new MappingReviewTool(project),
+				new MappingCoverageReportTool(project),
+				new MappingImportTool(project),
+				// Export & generation
 				new ExportMappingsTool(project),
-				new ExportMarkdownTool(project)
+				new ExportMarkdownTool(project),
+				new GenerateJavadocTool(project),
+				new GenerateInterfaceStubTool(project)
 		);
 	}
 }
